@@ -1,5 +1,5 @@
 import lief
-from pe_binary import Binary
+from zangope import Binary
 import time
 lief.logging.enable()
 lief.logging.set_level(lief.logging.LOGGING_LEVEL.TRACE)

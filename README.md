@@ -4,6 +4,7 @@ Another library for parsing PE information.
 To load a PE, just run:
 
 ```python
+from zangope import Binary
 calc = Binary.load_from_path("calc.exe")
 ```
 

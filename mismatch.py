@@ -1,5 +1,5 @@
 import lief
-from pe_binary import Binary
+from zangope import Binary
 
 SECTION_LENGTH = 512
 
