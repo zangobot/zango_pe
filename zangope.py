@@ -61,6 +61,8 @@ class Binary:
             characteristics |= flag
         return characteristics
 
+    def get_bytes(self):
+        return self.exe_bytes
 
     def get_pe_location(self):
         pe_location = self.exe_bytes[PE_HEADER_OFFSET:PE_HEADER_OFFSET+PE_HEADER_OFFSET_LENGTH]
@@ -95,7 +97,6 @@ class Binary:
         self.exe_bytes[dll_location : dll_location + DLL_CHARACTERISTICS_LENGTH] = new_characteristics
         return self.exe_bytes
 
-
     def get_total_number_sections(self):
         pe_location = self.get_pe_location()
         n_sections = self.exe_bytes[pe_location + PE_MAGIC_LENGTH + COFF_N_SECTION : pe_location + PE_MAGIC_LENGTH + COFF_N_SECTION + 2]
@@ -107,6 +108,13 @@ class Binary:
         n_sections = self.exe_bytes[pe_location + PE_MAGIC_LENGTH + COFF_N_SECTION : pe_location + PE_MAGIC_LENGTH + COFF_N_SECTION + 2]
         n_sections = int.from_bytes(n_sections, 'little') + 1
         self.exe_bytes[pe_location + PE_MAGIC_LENGTH + COFF_N_SECTION : pe_location + PE_MAGIC_LENGTH + COFF_N_SECTION + 2] = n_sections.to_bytes(2, 'little')
+
+    def get_section_entry_location_from_index(self, index: int):
+        n_sections = self.get_total_number_sections()
+        if index > n_sections:
+            raise ValueError(f"Section with index {index} not found. Only {n_sections} are present.")
+        section_table_offset = self.get_section_table_location()
+        return section_table_offset + index*40
 
     def get_section_entry_from_index(self, index: int):
         n_sections = self.get_total_number_sections()
@@ -227,14 +235,31 @@ class Binary:
         # increase number of sections ✅
         self.increase_number_sections()
         return self.exe_bytes
+    
+    def extend_dos_header(self, size: int):
+        # BEWARE: extending too much will cause the header to shift also the text section ✅
+        # Not possible with current editing
+        first_section = self.get_section_entry_from_index(0)
+        first_va = int.from_bytes(first_section[12:16], 'little')
+        increment = align(size, self.get_file_alignment())
+        if self.get_sizeof_headers() + increment > first_va:
+            print("Not enough space to increase header, first section would need displacement in RAM.")
+            print(f"Minimum increment: {increment}")
+            print(f"Available space: {first_va - self.get_sizeof_headers()}")
+        # shift all section content pointer by size, aligned to FileAlignment ✅
+        for i in range(self.get_total_number_sections()):
+            self.increase_pointer_raw_section(i, increment)
+        # increase size of headers ✅
+        self.set_sizeof_headers(self.get_sizeof_headers() + increment)
+        pe_location = self.get_pe_location()
+        self.exe_bytes = self.exe_bytes[:pe_location] + b"\x00"*increment + self.exe_bytes[pe_location:]
+        # increase offset of PE header✅
+        self.exe_bytes[PE_HEADER_OFFSET:PE_HEADER_OFFSET+PE_HEADER_OFFSET_LENGTH] = (pe_location+increment).to_bytes(4, 'little')
 
 
 
 if __name__ == '__main__':
-    with open("calc.exe", "rb") as f:
-        calc_bytes = bytearray(f.read())
-    calc = Binary.load_from_bytes(calc_bytes)
-    for i in range(77):
-        calc_bytes = calc.add_section(".test", 0x60000020, b"\x41" * 512)
-    with open("addsect_calc.exe", "wb") as f:
-        f.write(calc_bytes)
+    calc = Binary.load_from_path("calc.exe")
+    calc.extend_dos_header(0x200)
+    with open("extend_calc.exe", "wb") as f:
+        f.write(calc.get_bytes())
