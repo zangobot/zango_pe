@@ -266,12 +266,52 @@ class Binary:
         for i in range(section_index, self.get_total_number_sections()):
             self.increase_pointer_raw_section(i, increment)
 
+    def add_print_before_execution(self):
+        old_absolute_entry_point = 0x140001820
+        shellcode = f"""
+        sub rsp, 32;
+        mov rax, 0x6f6c6c6568000000;
+        mov [rsp + 16], rax;
+        mov rax, 0x0000000000000000;
+        mov [rsp + 8], rax;
+        mov rax, 0x0000000000000008;
+        mov rcx, -11;
+        xor rdx, rdx;
+        xor r8, r8;
+        xor r9, r9;
+        lea r10, [rsp + 8];
+        lea r8, [rsp + 16];
+        mov r9d, 5;
+        syscall;
+        mov rax, {old_absolute_entry_point}
+        push rax;
+        xor rax, rax;
+        ret;
+        """
+        from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+        engine = Ks(KS_ARCH_X86, KS_MODE_64)
+        encoding, _ = engine.asm(shellcode)
+        assembled_shellcode = b"".join([a.to_bytes(1, 'little') for a in encoding])
+        text_entry = self.get_section_entry_from_index(0)
+        virtual_size = int.from_bytes(text_entry[8:12], 'little')
+        virtual_address = int.from_bytes(text_entry[12:16], 'little')
+        raw_offset = int.from_bytes(text_entry[20:24], 'little')
+        print(len(self.exe_bytes))
+        self.exe_bytes[raw_offset + virtual_size : raw_offset + virtual_size + len(assembled_shellcode)] = assembled_shellcode
+        print(len(self.exe_bytes))
+        new_entry_point =  virtual_size + virtual_address
+        optional_header_location = self.get_optional_header_location()
+        entry_point = int.from_bytes(self.exe_bytes[optional_header_location + 16 : optional_header_location + 20], 'little')
+        print(f"OLD ENTRY POINT: {entry_point}")
+        print(f"NEW ENTRY POINT: {new_entry_point}")
+        self.exe_bytes[optional_header_location + 16 : optional_header_location + 20] = new_entry_point.to_bytes(4, 'little')
+
+
+
 
 if __name__ == '__main__':
     calc = Binary.load_from_path("calc.exe")
-    calc.displace_section_by(0, 0x400)
-    with open("shift_calc.exe", "wb") as f:
-        f.write(calc.get_bytes())
-    calc.displace_section_by(1, 0x200)
-    with open("shift_shift_calc.exe", "wb") as f:
+    calc.patch_aslr()
+    calc.add_print_before_execution()
+    with open("printto_calc.exe", "wb") as f:
         f.write(calc.get_bytes())
