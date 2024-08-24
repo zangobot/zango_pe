@@ -19,6 +19,9 @@ FORCE_INTEGRITY =   0x0080
 
 SECTION_ENTRY_LENGTH = 40
 
+PE_32_MAGIC = 0x10b
+PE_64_MAGIC = 0x20b
+
 def align(value, align_on):
     r = value % align_on
     if r > 0:
@@ -267,7 +270,15 @@ class Binary:
             self.increase_pointer_raw_section(i, increment)
 
     def add_print_before_execution(self):
-        old_absolute_entry_point = 0x140001820
+        optional_header_location = self.get_optional_header_location()
+        opt_magic = int.from_bytes(self.exe_bytes[optional_header_location:optional_header_location+2], 'little')
+        if opt_magic == PE_32_MAGIC:
+            image_base = self.exe_bytes[optional_header_location + 28:optional_header_location + 32]
+        else:
+            image_base = self.exe_bytes[optional_header_location + 24:optional_header_location + 32]
+        image_base = int.from_bytes(image_base, 'little')
+        entry_point = int.from_bytes(self.exe_bytes[optional_header_location + 16 : optional_header_location + 20], 'little')
+        old_absolute_entry_point = image_base + entry_point
         shellcode = f"""
         sub rsp, 32;
         mov rax, 0x6f6c6c6568000000;
@@ -296,18 +307,9 @@ class Binary:
         virtual_size = int.from_bytes(text_entry[8:12], 'little')
         virtual_address = int.from_bytes(text_entry[12:16], 'little')
         raw_offset = int.from_bytes(text_entry[20:24], 'little')
-        print(len(self.exe_bytes))
         self.exe_bytes[raw_offset + virtual_size : raw_offset + virtual_size + len(assembled_shellcode)] = assembled_shellcode
-        print(len(self.exe_bytes))
         new_entry_point =  virtual_size + virtual_address
-        optional_header_location = self.get_optional_header_location()
-        entry_point = int.from_bytes(self.exe_bytes[optional_header_location + 16 : optional_header_location + 20], 'little')
-        print(f"OLD ENTRY POINT: {entry_point}")
-        print(f"NEW ENTRY POINT: {new_entry_point}")
         self.exe_bytes[optional_header_location + 16 : optional_header_location + 20] = new_entry_point.to_bytes(4, 'little')
-
-
-
 
 if __name__ == '__main__':
     calc = Binary.load_from_path("calc.exe")

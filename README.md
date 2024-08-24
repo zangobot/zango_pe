@@ -10,8 +10,9 @@ calc = Binary.load_from_path("calc.exe")
 
 Manipulations of PE file format:
 
-* Add new section ✅ 
+* Add new section ✅
 * Extend DOS header ✅
 * Inject content between sections ✅
 * Remove ASLR loading ✅
 * Make .text section writeable ✅
+* Simple API call before calling regular program ✅
