@@ -246,7 +246,7 @@ class Binary:
             print("Not enough space to increase header, first section would need displacement in RAM.")
             print(f"Minimum increment: {increment}")
             print(f"Available space: {first_va - self.get_sizeof_headers()}")
-        # shift all section content pointer by size, aligned to FileAlignment ✅
+        # shift all section content pointers by size, aligned to FileAlignment ✅
         for i in range(self.get_total_number_sections()):
             self.increase_pointer_raw_section(i, increment)
         # increase size of headers ✅
@@ -256,10 +256,22 @@ class Binary:
         # increase offset of PE header✅
         self.exe_bytes[PE_HEADER_OFFSET:PE_HEADER_OFFSET+PE_HEADER_OFFSET_LENGTH] = (pe_location+increment).to_bytes(4, 'little')
 
+    def displace_section_by(self, section_index:int, size: int):
+        # Add zero bytes BEFORE the specified section ✅
+        increment = align(size, self.get_file_alignment())
+        entry = self.get_section_entry_from_index(section_index)
+        location = int.from_bytes(entry[20 : 24], 'little')
+        self.exe_bytes = self.exe_bytes[:location] + b"\x00" * increment + self.exe_bytes[location:]
+        # shift all section content pointers by size, aligned to FileAlignment ✅
+        for i in range(section_index, self.get_total_number_sections()):
+            self.increase_pointer_raw_section(i, increment)
 
 
 if __name__ == '__main__':
     calc = Binary.load_from_path("calc.exe")
-    calc.extend_dos_header(0x200)
-    with open("extend_calc.exe", "wb") as f:
+    calc.displace_section_by(0, 0x400)
+    with open("shift_calc.exe", "wb") as f:
+        f.write(calc.get_bytes())
+    calc.displace_section_by(1, 0x200)
+    with open("shift_shift_calc.exe", "wb") as f:
         f.write(calc.get_bytes())

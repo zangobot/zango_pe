@@ -12,6 +12,6 @@ Manipulations of PE file format:
 
 * Add new section ✅ 
 * Extend DOS header ✅
-* Inject content between sections ❌
+* Inject content between sections ✅
 * Remove ASLR loading ✅
 * Make .text section writeable ✅
