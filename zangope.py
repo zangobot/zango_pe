@@ -1,6 +1,3 @@
-import struct 
-import math
-
 PE_HEADER_OFFSET = 60
 PE_HEADER_OFFSET_LENGTH = 4
 
@@ -280,26 +277,31 @@ class Binary:
         entry_point = int.from_bytes(self.exe_bytes[optional_header_location + 16 : optional_header_location + 20], 'little')
         old_absolute_entry_point = image_base + entry_point
         shellcode = f"""
-        sub rsp, 32;
-        mov rax, 0x6f6c6c6568000000;
-        mov [rsp + 16], rax;
-        mov rax, 0x0000000000000000;
-        mov [rsp + 8], rax;
-        mov rax, 0x0000000000000008;
-        mov rcx, -11;
-        xor rdx, rdx;
-        xor r8, r8;
-        xor r9, r9;
-        lea r10, [rsp + 8];
-        lea r8, [rsp + 16];
-        mov r9d, 5;
-        syscall;
-        mov rax, {old_absolute_entry_point}
-        push rax;
-        xor rax, rax;
-        ret;
+            sub rsp, 32;
+            mov rax, 0x6f6c6c6568000000;
+            mov [rsp + 16], rax;
+            mov rax, 0x0000000000000000;
+            mov [rsp + 8], rax;
+            mov rax, 0x0000000000000008;
+            mov rcx, -11;
+            xor rdx, rdx;
+            xor r8, r8;
+            xor r9, r9;
+            lea r10, [rsp + 8];
+            lea r8, [rsp + 16];
+            mov r9d, 5;
+            syscall;
+            mov rax, {old_absolute_entry_point}
+            push rax;
+            xor rax, rax;
+            ret;
         """
-        from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+        try:
+            from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+        except ImportError as e:
+            print("Trying to compile ASM with Keystone, but Keystone not installed")
+            print(e)
+            return
         engine = Ks(KS_ARCH_X86, KS_MODE_64)
         encoding, _ = engine.asm(shellcode)
         assembled_shellcode = b"".join([a.to_bytes(1, 'little') for a in encoding])
