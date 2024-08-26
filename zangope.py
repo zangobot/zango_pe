@@ -25,6 +25,32 @@ def align(value, align_on):
         return value + (align_on - r)
     return value
 
+def create_shellcode_ntwritefile():
+    return """
+        sub rsp, 32;
+        mov rax, 0x6f6c6c6568000000;
+        mov [rsp + 16], rax;
+        mov rax, 0x0000000000000000;
+        mov [rsp + 8], rax;
+        mov rax, 0x0000000000000008;
+        mov rcx, -11;
+        xor rdx, rdx;
+        xor r8, r8;
+        xor r9, r9;
+        lea r10, [rsp + 8];
+        lea r8, [rsp + 16];
+        mov r9d, 5;
+        syscall;
+        add rsp, 32;
+    """
+
+def create_shellcode_return_to_ep(original_entry_point):
+    return f"""
+            mov rax, {original_entry_point};
+            push rax;
+            xor rax, rax;
+            ret;
+            """
 
 class Binary:
     def __init__(self, path=None, bytez=None):
@@ -267,6 +293,8 @@ class Binary:
             self.increase_pointer_raw_section(i, increment)
 
     def add_print_before_execution(self):
+        print("WARNING: only working on Windows 10 (and probably 11) since SYSCALL IDs changes")
+        # get ImageBase, by considering 4 or 8 bytes field depending on Magic ✅
         optional_header_location = self.get_optional_header_location()
         opt_magic = int.from_bytes(self.exe_bytes[optional_header_location:optional_header_location+2], 'little')
         if opt_magic == PE_32_MAGIC:
@@ -274,42 +302,28 @@ class Binary:
         else:
             image_base = self.exe_bytes[optional_header_location + 24:optional_header_location + 32]
         image_base = int.from_bytes(image_base, 'little')
+        # get entry point of executable in absolute virtual address (not considering ASLR) ✅
         entry_point = int.from_bytes(self.exe_bytes[optional_header_location + 16 : optional_header_location + 20], 'little')
         old_absolute_entry_point = image_base + entry_point
-        shellcode = f"""
-            sub rsp, 32;
-            mov rax, 0x6f6c6c6568000000;
-            mov [rsp + 16], rax;
-            mov rax, 0x0000000000000000;
-            mov [rsp + 8], rax;
-            mov rax, 0x0000000000000008;
-            mov rcx, -11;
-            xor rdx, rdx;
-            xor r8, r8;
-            xor r9, r9;
-            lea r10, [rsp + 8];
-            lea r8, [rsp + 16];
-            mov r9d, 5;
-            syscall;
-            mov rax, {old_absolute_entry_point}
-            push rax;
-            xor rax, rax;
-            ret;
-        """
+        # create shellcode that writes on output buffer (not console) a "hello" string ✅
+        shellcode = create_shellcode_ntwritefile() + create_shellcode_return_to_ep(old_absolute_entry_point)
         try:
             from keystone import Ks, KS_ARCH_X86, KS_MODE_64
         except ImportError as e:
             print("Trying to compile ASM with Keystone, but Keystone not installed")
             print(e)
             return
+        # assemble instructions with keystone ✅
         engine = Ks(KS_ARCH_X86, KS_MODE_64)
         encoding, _ = engine.asm(shellcode)
         assembled_shellcode = b"".join([a.to_bytes(1, 'little') for a in encoding])
+        # inject shellcode at the end of text section ✅
         text_entry = self.get_section_entry_from_index(0)
         virtual_size = int.from_bytes(text_entry[8:12], 'little')
         virtual_address = int.from_bytes(text_entry[12:16], 'little')
         raw_offset = int.from_bytes(text_entry[20:24], 'little')
         self.exe_bytes[raw_offset + virtual_size : raw_offset + virtual_size + len(assembled_shellcode)] = assembled_shellcode
+        # redirect entrypoint ✅
         new_entry_point =  virtual_size + virtual_address
         self.exe_bytes[optional_header_location + 16 : optional_header_location + 20] = new_entry_point.to_bytes(4, 'little')
 
