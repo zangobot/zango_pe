@@ -1,4 +1,8 @@
-import lief
+try:
+    import lief
+except ImportError:
+    print("lief not installed, can not test comparison")
+    sys.exit()
 from zangope import Binary
 import time
 lief.logging.enable()
